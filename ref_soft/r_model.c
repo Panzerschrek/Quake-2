@@ -292,17 +292,19 @@ Converts the 24 bit lighting down to 8 bit
 by taking the brightest component
 =================
 */
+//PANZER - convert 24 bit to 32 bit
 void Mod_LoadLighting (lump_t *l)
 {
 	int		i, size;
 	byte	*in;
+	byte	*out;
 
 	if (!l->filelen)
 	{
 		loadmodel->lightdata = NULL;
 		return;
 	}
-	size = l->filelen/3;
+	/*size = l->filelen/3;
 	loadmodel->lightdata = Hunk_Alloc (size);
 	in = (void *)(mod_base + l->fileofs);
 	for (i=0 ; i<size ; i++, in+=3)
@@ -313,6 +315,17 @@ void Mod_LoadLighting (lump_t *l)
 			loadmodel->lightdata[i] = in[1];
 		else
 			loadmodel->lightdata[i] = in[2];
+	}*/
+	size = (l->filelen/3)*4;
+	loadmodel->lightdata = Hunk_Alloc (size);
+	in = (void *)(mod_base + l->fileofs);
+	out= loadmodel->lightdata;
+	for (i=0 ; i<size ; i+=4, in+=3, out+=4)
+	{
+		int middle= (in[0] + in[1] + in[2] )/3;
+		out[0]= (in[0] + middle)>>1;
+		out[1]= (in[1] + middle)>>1;
+		out[2]= (in[2] + middle)>>1;
 	}
 }
 
@@ -631,8 +644,8 @@ void Mod_LoadFaces (lump_t *l)
 		i = LittleLong(in->lightofs);
 		if (i == -1)
 			out->samples = NULL;
-		else
-			out->samples = loadmodel->lightdata + i/3;
+		else//PANZER add *4
+			out->samples = loadmodel->lightdata + (i/3)*4;
 		
 	// set the drawing flags flag
 		

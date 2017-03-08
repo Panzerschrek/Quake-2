@@ -18,8 +18,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
   
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <stdarg.h>
@@ -790,6 +790,7 @@ void	 R_BeginFrame( float camera_separation );
 void	R_CinematicSetPalette( const unsigned char *palette );
 
 extern unsigned d_8to24table[256]; // base
+extern byte d_16to8table[];//PANZER
 
 void    Sys_MakeCodeWriteable (unsigned long startaddr, unsigned long length);
 void    Sys_SetFPCW (void);

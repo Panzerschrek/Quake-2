@@ -125,8 +125,8 @@ void LoadPCX (char *filename, byte **pic, byte **palette, int *width, int *heigh
 		|| pcx->version != 5
 		|| pcx->encoding != 1
 		|| pcx->bits_per_pixel != 8
-		|| pcx->xmax >= 640
-		|| pcx->ymax >= 480)
+		|| pcx->xmax >= 1024
+		|| pcx->ymax >= 1024)
 	{
 		ri.Con_Printf (PRINT_ALL, "Bad pcx file %s\n", filename);
 		return;

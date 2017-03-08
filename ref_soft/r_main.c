@@ -25,6 +25,8 @@ viddef_t	vid;
 refimport_t	ri;
 
 unsigned	d_8to24table[256];
+//PANZER - add this table
+byte d_16to8table[65536];
 
 entity_t	r_worldentity;
 
@@ -1322,6 +1324,7 @@ void Draw_GetPalette (void)
 	byte	*pal, *out;
 	int		i;
 	int		r, g, b;
+	byte* d_16to8_in;
 
 	// get the palette and colormap
 	LoadPCX ("pics/colormap.pcx", &vid.colormap, &pal, NULL, NULL);
@@ -1342,7 +1345,15 @@ void Draw_GetPalette (void)
 	}
 
 	free (pal);
+
+	//PANZER ad loading this table
+	ri.FS_LoadFile( "pics/16to8.dat", &d_16to8_in);
+	if( d_16to8_in == NULL )
+		ri.Sys_Error( ERR_FATAL, "Couldn't load pics/16to8.pcx");
+	memcpy( d_16to8table, d_16to8_in, 65536 );
+	ri.FS_FreeFile(d_16to8_in);
 }
+
 
 struct image_s *R_RegisterSkin (char *name);
 

@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 int	r_dlightframecount;
 
+#define MAX_LIGHTMAP_LIGHT 200
 
 /*
 =============================================================================
@@ -196,16 +197,17 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 		VectorCopy (vec3_origin, pointcolor);
 		if (lightmap)
 		{
-			lightmap += dt * ((surf->extents[0]>>4)+1) + ds;
+			lightmap += 4* ( dt * ((surf->extents[0]>>4)+1) + ds );
 
 			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
 					maps++)
 			{
-				samp = *lightmap * /* 0.5 * */ (1.0/255);	// adjust for gl scale
+				//samp = *lightmap * /* 0.5 * */ (1.0/255);	// adjust for gl scale
+				samp= (lightmap[0] + lightmap[1] + lightmap[2] ) * ( 1.0 / 768 );//PANZER add rgb
 				scales = r_newrefdef.lightstyles[surf->styles[maps]].rgb;
 				VectorMA (pointcolor, samp, scales, pointcolor);
-				lightmap += ((surf->extents[0]>>4)+1) *
-						((surf->extents[1]>>4)+1);
+				lightmap += 4* (((surf->extents[0]>>4)+1) *
+						((surf->extents[1]>>4)+1) );
 			}
 		}
 		
@@ -273,8 +275,8 @@ void R_LightPoint (vec3_t p, vec3_t color)
 
 //===================================================================
 
-
-unsigned		blocklights[1024];	// allow some very large lightmaps
+//PANZER extend * 6
+unsigned		blocklights[1024 * 6];	// allow some very large lightmaps
 
 /*
 ===============
@@ -283,7 +285,7 @@ R_AddDynamicLights
 */
 void R_AddDynamicLights (void)
 {
-	msurface_t *surf;
+msurface_t *surf;
 	int			lnum;
 	int			sd, td;
 	float		dist, rad, minlight;
@@ -294,19 +296,31 @@ void R_AddDynamicLights (void)
 	mtexinfo_t	*tex;
 	dlight_t	*dl;
 	int			negativeLight;	//PGM
+	byte* dst;
+
+	dst= (byte*)blocklights;
 
 	surf = r_drawsurf.surf;
 	smax = (surf->extents[0]>>4)+1;
 	tmax = (surf->extents[1]>>4)+1;
 	tex = surf->texinfo;
 
-	for (lnum=0 ; lnum<r_newrefdef.num_dlights ; lnum++)
+	for (lnum=0 ; lnum<r_newrefdef.num_dlights; lnum++)
 	{
+		float light_color[3];
+		float middle_light_color;
+
 		if ( !(surf->dlightbits & (1<<lnum) ) )
 			continue;		// not lit by this light
 
 		dl = &r_newrefdef.dlights[lnum];
-		rad = dl->intensity;
+		rad = dl->intensity * 0.5f;//PANZER - make light darker
+
+		//make light color correction
+		middle_light_color= ( dl->color[0] + dl->color[1] + dl->color[2] ) *0.3333f;
+		light_color[0]= ( dl->color[0] + middle_light_color ) * 0.5f;
+		light_color[1]= ( dl->color[1] + middle_light_color ) * 0.5f;
+		light_color[2]= ( dl->color[1] + middle_light_color ) * 0.5f;
 
 //=====
 //PGM
@@ -357,15 +371,30 @@ void R_AddDynamicLights (void)
 //PGM
 				if(!negativeLight)
 				{
-					if (dist < minlight)
-						blocklights[t*smax + s] += (rad - dist)*256;
+					//if (dist < minlight)
+					//	blocklights[t*smax + s] += (rad - dist)*256;
+					int iii;
+					int ind= (t*smax + s)<<2;
+					int l= (rad - dist)*192;
+					if( l < 0 ) l = 0;
+					for( iii= 0; iii< 3; iii++ )
+					{
+						int final_l= dst[ind+iii] + l * dl->color[iii];
+						if( final_l > MAX_LIGHTMAP_LIGHT ) final_l= MAX_LIGHTMAP_LIGHT;
+						dst[ind+iii]= final_l;
+					}
 				}
 				else
 				{
-					if (dist < minlight)
-						blocklights[t*smax + s] -= (rad - dist)*256;
-					if(blocklights[t*smax + s] < minlight)
-						blocklights[t*smax + s] = minlight;
+					int iii;
+					int ind= (t*smax + s)<<2;
+					for( iii= 0; iii< 3; iii++ )
+					{
+						if (dist < minlight)
+							dst[ind+iii] -= (rad - dist)*192;
+						if(blocklights[t*smax + s] < minlight)
+							dst[ind+iii] = minlight;
+					}
 				}
 //PGM
 //====
@@ -374,6 +403,7 @@ void R_AddDynamicLights (void)
 	}
 }
 
+
 /*
 ===============
 R_BuildLightMap
@@ -381,6 +411,48 @@ R_BuildLightMap
 Combine and scale multiple lightmaps into the 8.8 format in blocklights
 ===============
 */
+void R_BuildLightMap (void)
+{
+	byte* dst, *lightmap;
+	int size;
+	int i;
+	int			maps;
+	unsigned int scale;
+	msurface_t	*surf;
+
+	surf = r_drawsurf.surf;
+
+	dst= (byte*)blocklights;
+	size= 4 * ((surf->extents[0]>>4)+1) * ((surf->extents[1]>>4)+1);
+
+	for( i= 0; i< size; i+=4 )
+	{
+		dst[i]= dst[i+1]= dst[i+2]= 0;
+	}
+
+	lightmap = surf->samples;
+	if (lightmap)
+		for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
+			 maps++)
+		{
+			scale = r_drawsurf.lightadj[maps] *3/4;	// 8.8 fraction		
+			for (i=0 ; i<size ; i+=4)
+			{
+				int l;
+				l= ((lightmap[i  ]*scale)>>8) + dst[i  ];
+				if( l > MAX_LIGHTMAP_LIGHT ) l= MAX_LIGHTMAP_LIGHT; dst[i  ]= l;
+				l= ((lightmap[i+1]*scale)>>8) + dst[i+1];
+				if( l > MAX_LIGHTMAP_LIGHT ) l= MAX_LIGHTMAP_LIGHT; dst[i+1]= l;
+				l= ((lightmap[i+2]*scale)>>8) + dst[i+2];
+				if( l > MAX_LIGHTMAP_LIGHT ) l= MAX_LIGHTMAP_LIGHT; dst[i+2]= l;
+			}
+
+			lightmap += size;	// skip to next lightmap
+		}
+
+		R_AddDynamicLights();
+}
+/*
 void R_BuildLightMap (void)
 {
 	int			smax, tmax;
@@ -395,7 +467,7 @@ void R_BuildLightMap (void)
 
 	smax = (surf->extents[0]>>4)+1;
 	tmax = (surf->extents[1]>>4)+1;
-	size = smax*tmax;
+	size = smax*tmax * 4;
 
 	if (r_fullbright->value || !r_worldmodel->lightdata)
 	{
@@ -416,8 +488,13 @@ void R_BuildLightMap (void)
 			 maps++)
 		{
 			scale = r_drawsurf.lightadj[maps];	// 8.8 fraction		
-			for (i=0 ; i<size ; i++)
-				blocklights[i] += lightmap[i] * scale;
+			for (i=0 ; i<size ; i+=4)
+			{
+				blocklights[i  ] += lightmap[i  ] * scale;
+				blocklights[i+1] += lightmap[i+1] * scale;
+				blocklights[i+2] += lightmap[i+2] * scale;
+			}
+
 			lightmap += size;	// skip to next lightmap
 		}
 
@@ -426,6 +503,8 @@ void R_BuildLightMap (void)
 		R_AddDynamicLights ();
 
 // bound, invert, and shift
+	//PANZER -do not need it
+	return;
 	for (i=0 ; i<size ; i++)
 	{
 		t = (int)blocklights[i];
@@ -438,5 +517,5 @@ void R_BuildLightMap (void)
 
 		blocklights[i] = t;
 	}
-}
+}*/
 
