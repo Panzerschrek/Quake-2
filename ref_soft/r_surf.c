@@ -754,6 +754,7 @@ void R_InitCaches (void)
 		pix = vid.width*vid.height;
 		if (pix > 64000)
 			size += (pix-64000)*3;
+		size*= 4;
 	}		
 
 	// round up to page size
